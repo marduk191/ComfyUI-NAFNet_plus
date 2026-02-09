@@ -4,8 +4,6 @@ ComfyUI custom nodes for [NAFNet](https://github.com/megvii-research/NAFNet) - S
 
 This node pack provides state-of-the-art image denoising, deblurring, and stereo super-resolution capabilities using NAFNet and NAFSSR models from MEGVII Research.
 
-![NAFNet Banner](https://raw.githubusercontent.com/megvii-research/NAFNet/main/figures/NAFNet-title.png)
-
 ## Features
 
 - **Image Denoising** - Remove noise from images using SIDD-trained models
@@ -26,11 +24,7 @@ This node pack provides state-of-the-art image denoising, deblurring, and stereo
 
 ## Installation
 
-### Option 1: ComfyUI Manager (Recommended)
-
-Search for "NAFNet" in ComfyUI Manager and install.
-
-### Option 2: Manual Installation
+Manual Installation:
 
 ```bash
 cd ComfyUI/custom_nodes
