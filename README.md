@@ -39,9 +39,9 @@ cd ComfyUI-NAFNet
 pip install -r requirements.txt
 ```
 
-**Note:** Models are included in the repository via Git LFS. If models weren't downloaded, run:
+**Note:** Models (1.3 GB) are included via Git LFS. If you don't have Git LFS installed, run the fallback downloader:
 ```bash
-git lfs pull
+python download_models.py
 ```
 
 ## Models
@@ -108,7 +108,7 @@ Sample workflow JSON files are included in the `workflows/` folder:
 
 - ComfyUI
 - PyTorch (CUDA recommended)
-- gdown (for model downloads)
+- gdown (only needed if Git LFS models fail to download)
 
 ## Credits
 
