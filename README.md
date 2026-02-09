@@ -1,4 +1,4 @@
-# ComfyUI-NAFNet
+# ComfyUI-NAFNet_plus
 
 ComfyUI custom nodes for state-of-the-art image restoration:
 
@@ -35,8 +35,8 @@ Manual Installation:
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/marduk191/ComfyUI-NAFNet.git
-cd ComfyUI-NAFNet
+git clone https://github.com/marduk191/ComfyUI-NAFNet_plus.git
+cd ComfyUI-NAFNet_plus
 pip install -r requirements.txt
 ```
 
