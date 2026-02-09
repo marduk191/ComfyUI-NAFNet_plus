@@ -26,6 +26,11 @@ MODEL_CONFIGS = {
     "NAFSSR-L_4x.pth": {"type": "nafssr", "up_scale": 4, "width": 64, "num_blks": 64, "fusion_from": 0, "fusion_to": 62},
 }
 
+# Auto-tile threshold (images larger than this will be tiled automatically)
+AUTO_TILE_THRESHOLD = 1024 * 1024  # 1 megapixel
+DEFAULT_TILE_SIZE = 512
+DEFAULT_TILE_OVERLAP = 64
+
 
 def get_available_models():
     """Return list of available model files in the models directory."""
@@ -92,6 +97,84 @@ def load_nafnet_model(model_name, device):
     return model
 
 
+def tiled_inference(model, img, tile_size, overlap):
+    """Process image in tiles for memory efficiency."""
+    B, C, H, W = img.shape
+    device = img.device
+
+    # Ensure tile_size is at least as big as needed for the model
+    tile_size = max(tile_size, 64)
+
+    # If image is smaller than tile, just process directly
+    if H <= tile_size and W <= tile_size:
+        return model(img)
+
+    # Calculate output size
+    out = torch.zeros_like(img)
+    count = torch.zeros_like(img)
+
+    # Calculate number of tiles
+    stride = tile_size - overlap
+    h_tiles = max(1, (H - overlap + stride - 1) // stride)
+    w_tiles = max(1, (W - overlap + stride - 1) // stride)
+
+    for h_idx in range(h_tiles):
+        for w_idx in range(w_tiles):
+            # Calculate tile boundaries
+            h_start = h_idx * stride
+            w_start = w_idx * stride
+
+            # Ensure we don't go past the image boundaries
+            h_start = min(h_start, max(0, H - tile_size))
+            w_start = min(w_start, max(0, W - tile_size))
+
+            h_end = min(h_start + tile_size, H)
+            w_end = min(w_start + tile_size, W)
+
+            # Extract tile
+            tile = img[:, :, h_start:h_end, w_start:w_end]
+
+            # Process tile
+            with torch.no_grad():
+                tile_out = model(tile)
+
+            # Accumulate results
+            out[:, :, h_start:h_end, w_start:w_end] += tile_out
+            count[:, :, h_start:h_end, w_start:w_end] += 1
+
+    # Average overlapping regions
+    return out / count
+
+
+def process_image(model, image, tile_size=0, tile_overlap=DEFAULT_TILE_OVERLAP):
+    """Process an image through NAFNet with optional tiling."""
+    device = next(model.parameters()).device
+
+    # ComfyUI format: [B, H, W, C] float32 0-1
+    # NAFNet expects: [B, C, H, W] float32 0-1
+    img_tensor = image.permute(0, 3, 1, 2).to(device)
+
+    B, C, H, W = img_tensor.shape
+    num_pixels = H * W
+
+    # Auto-tile if image is large and no tile_size specified
+    if tile_size == 0 and num_pixels > AUTO_TILE_THRESHOLD:
+        tile_size = DEFAULT_TILE_SIZE
+        print(f"[NAFNet] Auto-tiling enabled for {W}x{H} image (tile_size={tile_size})")
+
+    with torch.no_grad():
+        if tile_size > 0:
+            output = tiled_inference(model, img_tensor, tile_size, tile_overlap)
+        else:
+            output = model(img_tensor)
+
+    # Convert back to ComfyUI format [B, H, W, C]
+    output = output.permute(0, 2, 3, 1).cpu()
+    output = torch.clamp(output, 0, 1)
+
+    return output
+
+
 class NAFNetLoader:
     """Load a NAFNet model for image restoration."""
 
@@ -125,9 +208,9 @@ class NAFNetRestore:
                 "model": ("NAFNET_MODEL",),
             },
             "optional": {
-                "tile_size": ("INT", {"default": 0, "min": 0, "max": 2048, "step": 64,
-                                       "tooltip": "Tile size for processing large images. 0 = no tiling"}),
-                "tile_overlap": ("INT", {"default": 32, "min": 0, "max": 256, "step": 8}),
+                "tile_size": ("INT", {"default": 512, "min": 0, "max": 2048, "step": 64,
+                                       "tooltip": "Tile size for processing. 0 = auto (tiles large images automatically)"}),
+                "tile_overlap": ("INT", {"default": 64, "min": 0, "max": 256, "step": 8}),
             }
         }
 
@@ -135,54 +218,8 @@ class NAFNetRestore:
     FUNCTION = "restore"
     CATEGORY = "image/restoration"
 
-    def restore(self, image, model, tile_size=0, tile_overlap=32):
-        device = next(model.parameters()).device
-
-        # ComfyUI format: [B, H, W, C] float32 0-1
-        # NAFNet expects: [B, C, H, W] float32 0-1
-        img_tensor = image.permute(0, 3, 1, 2).to(device)
-
-        with torch.no_grad():
-            if tile_size > 0:
-                output = self._tiled_inference(model, img_tensor, tile_size, tile_overlap)
-            else:
-                output = model(img_tensor)
-
-        # Convert back to ComfyUI format [B, H, W, C]
-        output = output.permute(0, 2, 3, 1).cpu()
-        output = torch.clamp(output, 0, 1)
-
-        return (output,)
-
-    def _tiled_inference(self, model, img, tile_size, overlap):
-        """Process image in tiles for memory efficiency."""
-        B, C, H, W = img.shape
-
-        # Calculate output size
-        out = torch.zeros_like(img)
-        count = torch.zeros_like(img)
-
-        # Calculate number of tiles
-        stride = tile_size - overlap
-        h_tiles = max(1, (H - overlap) // stride + (1 if (H - overlap) % stride else 0))
-        w_tiles = max(1, (W - overlap) // stride + (1 if (W - overlap) % stride else 0))
-
-        for h_idx in range(h_tiles):
-            for w_idx in range(w_tiles):
-                h_start = min(h_idx * stride, H - tile_size)
-                w_start = min(w_idx * stride, W - tile_size)
-                h_start = max(0, h_start)
-                w_start = max(0, w_start)
-                h_end = min(h_start + tile_size, H)
-                w_end = min(w_start + tile_size, W)
-
-                tile = img[:, :, h_start:h_end, w_start:w_end]
-                tile_out = model(tile)
-
-                out[:, :, h_start:h_end, w_start:w_end] += tile_out
-                count[:, :, h_start:h_end, w_start:w_end] += 1
-
-        return out / count
+    def restore(self, image, model, tile_size=512, tile_overlap=64):
+        return (process_image(model, image, tile_size, tile_overlap),)
 
 
 class NAFNetDenoise:
@@ -197,6 +234,10 @@ class NAFNetDenoise:
             "required": {
                 "image": ("IMAGE",),
                 "model_variant": (["width64", "width32"], {"default": "width64"}),
+            },
+            "optional": {
+                "tile_size": ("INT", {"default": 0, "min": 0, "max": 2048, "step": 64,
+                                       "tooltip": "Tile size for processing. 0 = auto (tiles large images automatically)"}),
             }
         }
 
@@ -204,7 +245,7 @@ class NAFNetDenoise:
     FUNCTION = "denoise"
     CATEGORY = "image/restoration"
 
-    def denoise(self, image, model_variant="width64"):
+    def denoise(self, image, model_variant="width64", tile_size=0):
         model_name = f"NAFNet-SIDD-{model_variant}.pth"
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -213,18 +254,7 @@ class NAFNetDenoise:
             NAFNetDenoise._model = load_nafnet_model(model_name, device)
             NAFNetDenoise._model_name = model_name
 
-        model = NAFNetDenoise._model
-
-        # ComfyUI format: [B, H, W, C] -> NAFNet: [B, C, H, W]
-        img_tensor = image.permute(0, 3, 1, 2).to(device)
-
-        with torch.no_grad():
-            output = model(img_tensor)
-
-        output = output.permute(0, 2, 3, 1).cpu()
-        output = torch.clamp(output, 0, 1)
-
-        return (output,)
+        return (process_image(NAFNetDenoise._model, image, tile_size),)
 
 
 class NAFNetDeblur:
@@ -239,6 +269,10 @@ class NAFNetDeblur:
             "required": {
                 "image": ("IMAGE",),
                 "model_variant": (["width64", "width32"], {"default": "width64"}),
+            },
+            "optional": {
+                "tile_size": ("INT", {"default": 0, "min": 0, "max": 2048, "step": 64,
+                                       "tooltip": "Tile size for processing. 0 = auto (tiles large images automatically)"}),
             }
         }
 
@@ -246,7 +280,7 @@ class NAFNetDeblur:
     FUNCTION = "deblur"
     CATEGORY = "image/restoration"
 
-    def deblur(self, image, model_variant="width64"):
+    def deblur(self, image, model_variant="width64", tile_size=0):
         model_name = f"NAFNet-GoPro-{model_variant}.pth"
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -255,18 +289,7 @@ class NAFNetDeblur:
             NAFNetDeblur._model = load_nafnet_model(model_name, device)
             NAFNetDeblur._model_name = model_name
 
-        model = NAFNetDeblur._model
-
-        # ComfyUI format: [B, H, W, C] -> NAFNet: [B, C, H, W]
-        img_tensor = image.permute(0, 3, 1, 2).to(device)
-
-        with torch.no_grad():
-            output = model(img_tensor)
-
-        output = output.permute(0, 2, 3, 1).cpu()
-        output = torch.clamp(output, 0, 1)
-
-        return (output,)
+        return (process_image(NAFNetDeblur._model, image, tile_size),)
 
 
 class NAFSSRStereoSR:

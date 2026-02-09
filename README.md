@@ -40,15 +40,25 @@ python download_models.py
 
 ## Models
 
-| Model | Task | Size | Dataset |
-|-------|------|------|---------|
-| NAFNet-SIDD-width32.pth | Denoising | 111 MB | SIDD |
-| NAFNet-SIDD-width64.pth | Denoising | 443 MB | SIDD |
-| NAFNet-GoPro-width32.pth | Deblurring | 66 MB | GoPro |
-| NAFNet-GoPro-width64.pth | Deblurring | 259 MB | GoPro |
-| NAFNet-REDS-width64.pth | Video Deblurring | 259 MB | REDS |
-| NAFSSR-L_2x.pth | Stereo SR 2x | 92 MB | Flickr1024 |
-| NAFSSR-L_4x.pth | Stereo SR 4x | 92 MB | Flickr1024 |
+| Model | Task | Size | Best For |
+|-------|------|------|----------|
+| NAFNet-SIDD-width32.pth | Denoising | 111 MB | Smartphone photos, general sensor noise |
+| NAFNet-SIDD-width64.pth | Denoising | 443 MB | Smartphone photos, general sensor noise |
+| NAFNet-GoPro-width32.pth | Deblurring | 66 MB | **GoPro motion blur only** |
+| NAFNet-GoPro-width64.pth | Deblurring | 259 MB | **GoPro motion blur only** |
+| NAFNet-REDS-width64.pth | Video Deblurring | 259 MB | **Video frames with compression artifacts** |
+| NAFSSR-L_2x.pth | Stereo SR 2x | 92 MB | Stereo image pairs |
+| NAFSSR-L_4x.pth | Stereo SR 4x | 92 MB | Stereo image pairs |
+
+### Important: Model Domain Specificity
+
+**NAFNet models are domain-specific** - they only work well on images similar to their training data:
+
+- **SIDD (Denoising)**: Trained on smartphone camera noise. Works well on most photos with sensor noise.
+- **GoPro (Deblurring)**: Trained specifically on GoPro camera motion blur. Will produce artifacts on other blur types.
+- **REDS (Video Deblurring)**: Trained on video frames with specific blur/compression patterns. Not for photos.
+
+If you apply the wrong model to your image, you'll get colorful noise/artifacts instead of restoration.
 
 ## Usage Examples
 
