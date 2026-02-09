@@ -34,15 +34,15 @@ Search for "NAFNet" in ComfyUI Manager and install.
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/YOUR_USERNAME/ComfyUI-NAFNet.git
+git clone https://github.com/marduk191/ComfyUI-NAFNet.git
 cd ComfyUI-NAFNet
 pip install -r requirements.txt
-python download_models.py
 ```
 
-### Option 3: Download Models Manually
-
-Download models from the [NAFNet releases](https://github.com/megvii-research/NAFNet#results-and-pre-trained-models) and place them in the `models/` folder.
+**Note:** Models are included in the repository via Git LFS. If models weren't downloaded, run:
+```bash
+git lfs pull
+```
 
 ## Models
 

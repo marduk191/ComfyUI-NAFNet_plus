@@ -1,6 +1,7 @@
-# Model files (downloaded separately)
-models/*.pth
-models/*.safetensors
+# Model files are tracked with Git LFS
+# Uncomment below to exclude models from repo:
+# models/*.pth
+# models/*.safetensors
 
 # Python
 __pycache__/
