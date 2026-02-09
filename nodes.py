@@ -13,17 +13,22 @@ os.makedirs(MODELS_DIR, exist_ok=True)
 
 # Model configurations matching the official pretrained weights
 MODEL_CONFIGS = {
-    # Denoising models (SIDD dataset)
+    # NAFNet Denoising models (SIDD dataset)
     "NAFNet-SIDD-width32.pth": {"type": "nafnet", "width": 32, "enc_blks": [2, 2, 4, 8], "middle_blk_num": 12, "dec_blks": [2, 2, 2, 2]},
     "NAFNet-SIDD-width64.pth": {"type": "nafnet", "width": 64, "enc_blks": [2, 2, 4, 8], "middle_blk_num": 12, "dec_blks": [2, 2, 2, 2]},
-    # Deblurring models (GoPro dataset)
+    # NAFNet Deblurring models (GoPro dataset)
     "NAFNet-GoPro-width32.pth": {"type": "nafnet", "width": 32, "enc_blks": [1, 1, 1, 28], "middle_blk_num": 1, "dec_blks": [1, 1, 1, 1]},
     "NAFNet-GoPro-width64.pth": {"type": "nafnet", "width": 64, "enc_blks": [1, 1, 1, 28], "middle_blk_num": 1, "dec_blks": [1, 1, 1, 1]},
-    # REDS deblurring (video deblurring)
+    # NAFNet REDS deblurring (video deblurring)
     "NAFNet-REDS-width64.pth": {"type": "nafnet", "width": 64, "enc_blks": [1, 1, 1, 28], "middle_blk_num": 1, "dec_blks": [1, 1, 1, 1]},
-    # Stereo Super-Resolution (NAFSSR)
+    # NAFSSR Stereo Super-Resolution
     "NAFSSR-L_2x.pth": {"type": "nafssr", "up_scale": 2, "width": 64, "num_blks": 64, "fusion_from": 0, "fusion_to": 62},
     "NAFSSR-L_4x.pth": {"type": "nafssr", "up_scale": 4, "width": 64, "num_blks": 64, "fusion_from": 0, "fusion_to": 62},
+    # SCUNet models (blind real denoising)
+    "scunet_color_real_gan.pth": {"type": "scunet"},
+    "scunet_color_real_psnr.pth": {"type": "scunet"},
+    # Restormer models
+    "restormer_real_denoising.pth": {"type": "restormer"},
 }
 
 # Auto-tile threshold (images larger than this will be tiled automatically)
@@ -37,7 +42,7 @@ def get_available_models():
     if not os.path.exists(MODELS_DIR):
         return []
     models = [f for f in os.listdir(MODELS_DIR) if f.endswith('.pth')]
-    return models if models else ["No models found - download from NAFNet repo"]
+    return models if models else ["No models found - download models"]
 
 
 def load_nafnet_model(model_name, device):
@@ -97,6 +102,68 @@ def load_nafnet_model(model_name, device):
     return model
 
 
+def load_scunet_model(model_name, device):
+    """Load a SCUNet model."""
+    try:
+        from .scunet_arch import SCUNet
+    except ImportError:
+        from scunet_arch import SCUNet
+
+    model_path = os.path.join(MODELS_DIR, model_name)
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model not found: {model_path}")
+
+    model = SCUNet(in_nc=3, config=[4, 4, 4, 4, 4, 4, 4], dim=64)
+
+    checkpoint = torch.load(model_path, map_location='cpu', weights_only=False)
+    if isinstance(checkpoint, dict) and 'params' in checkpoint:
+        state_dict = checkpoint['params']
+    else:
+        state_dict = checkpoint
+
+    model.load_state_dict(state_dict, strict=True)
+    model.eval()
+    model.to(device)
+    return model
+
+
+def load_restormer_model(model_name, device):
+    """Load a Restormer model."""
+    try:
+        from .restormer_arch import Restormer
+    except ImportError:
+        from restormer_arch import Restormer
+
+    model_path = os.path.join(MODELS_DIR, model_name)
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model not found: {model_path}")
+
+    # Default Restormer config for real denoising
+    model = Restormer(
+        inp_channels=3,
+        out_channels=3,
+        dim=48,
+        num_blocks=[4, 6, 6, 8],
+        num_refinement_blocks=4,
+        heads=[1, 2, 4, 8],
+        ffn_expansion_factor=2.66,
+        bias=False,
+        LayerNorm_type='BiasFree',
+        dual_pixel_task=False
+    )
+
+    checkpoint = torch.load(model_path, map_location='cpu', weights_only=False)
+    if isinstance(checkpoint, dict) and 'params' in checkpoint:
+        state_dict = checkpoint['params']
+    else:
+        state_dict = checkpoint
+
+    model.load_state_dict(state_dict, strict=True)
+    model.eval()
+    model.to(device)
+    return model
+
+
 def tiled_inference(model, img, tile_size, overlap):
     """Process image in tiles for memory efficiency."""
     B, C, H, W = img.shape
@@ -147,11 +214,11 @@ def tiled_inference(model, img, tile_size, overlap):
 
 
 def process_image(model, image, tile_size=0, tile_overlap=DEFAULT_TILE_OVERLAP):
-    """Process an image through NAFNet with optional tiling."""
+    """Process an image through a model with optional tiling."""
     device = next(model.parameters()).device
 
     # ComfyUI format: [B, H, W, C] float32 0-1
-    # NAFNet expects: [B, C, H, W] float32 0-1
+    # Model expects: [B, C, H, W] float32 0-1
     img_tensor = image.permute(0, 3, 1, 2).to(device)
 
     B, C, H, W = img_tensor.shape
@@ -160,7 +227,7 @@ def process_image(model, image, tile_size=0, tile_overlap=DEFAULT_TILE_OVERLAP):
     # Auto-tile if image is large and no tile_size specified
     if tile_size == 0 and num_pixels > AUTO_TILE_THRESHOLD:
         tile_size = DEFAULT_TILE_SIZE
-        print(f"[NAFNet] Auto-tiling enabled for {W}x{H} image (tile_size={tile_size})")
+        print(f"[Restoration] Auto-tiling enabled for {W}x{H} image (tile_size={tile_size})")
 
     with torch.no_grad():
         if tile_size > 0:
@@ -174,6 +241,10 @@ def process_image(model, image, tile_size=0, tile_overlap=DEFAULT_TILE_OVERLAP):
 
     return output
 
+
+# =============================================================================
+# NAFNet Nodes
+# =============================================================================
 
 class NAFNetLoader:
     """Load a NAFNet model for image restoration."""
@@ -347,18 +418,116 @@ class NAFSSRStereoSR:
         return (left_sr, right_sr)
 
 
+# =============================================================================
+# SCUNet Nodes - Blind Real Image Denoising
+# =============================================================================
+
+class SCUNetDenoise:
+    """Blind denoising using SCUNet - works well on unknown/real-world noise including astrophotography."""
+
+    _model = None
+    _model_name = None
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "model_variant": (["real_gan", "real_psnr"], {"default": "real_gan"}),
+            },
+            "optional": {
+                "tile_size": ("INT", {"default": 0, "min": 0, "max": 2048, "step": 64,
+                                       "tooltip": "Tile size for processing. 0 = auto. SCUNet needs multiples of 64."}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "denoise"
+    CATEGORY = "image/restoration"
+    DESCRIPTION = "SCUNet blind denoising - handles unknown noise types well. Use 'real_gan' for perceptually better results, 'real_psnr' for higher PSNR."
+
+    def denoise(self, image, model_variant="real_gan", tile_size=0):
+        model_name = f"scunet_color_{model_variant}.pth"
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Cache model
+        if SCUNetDenoise._model is None or SCUNetDenoise._model_name != model_name:
+            SCUNetDenoise._model = load_scunet_model(model_name, device)
+            SCUNetDenoise._model_name = model_name
+
+        # SCUNet needs tile_size multiple of 64
+        if tile_size > 0:
+            tile_size = (tile_size // 64) * 64
+            tile_size = max(tile_size, 64)
+
+        return (process_image(SCUNetDenoise._model, image, tile_size),)
+
+
+# =============================================================================
+# Restormer Nodes - State-of-the-art Transformer Denoising
+# =============================================================================
+
+class RestormerDenoise:
+    """Real image denoising using Restormer transformer architecture."""
+
+    _model = None
+    _model_name = None
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+            },
+            "optional": {
+                "tile_size": ("INT", {"default": 0, "min": 0, "max": 2048, "step": 64,
+                                       "tooltip": "Tile size for processing. 0 = auto (tiles large images automatically)"}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "denoise"
+    CATEGORY = "image/restoration"
+    DESCRIPTION = "Restormer - State-of-the-art transformer for real image denoising. Good for diverse noise types."
+
+    def denoise(self, image, tile_size=0):
+        model_name = "restormer_real_denoising.pth"
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Cache model
+        if RestormerDenoise._model is None or RestormerDenoise._model_name != model_name:
+            RestormerDenoise._model = load_restormer_model(model_name, device)
+            RestormerDenoise._model_name = model_name
+
+        return (process_image(RestormerDenoise._model, image, tile_size),)
+
+
+# =============================================================================
+# Node Mappings
+# =============================================================================
+
 NODE_CLASS_MAPPINGS = {
+    # NAFNet nodes
     "NAFNetLoader": NAFNetLoader,
     "NAFNetRestore": NAFNetRestore,
     "NAFNetDenoise": NAFNetDenoise,
     "NAFNetDeblur": NAFNetDeblur,
     "NAFSSRStereoSR": NAFSSRStereoSR,
+    # SCUNet nodes
+    "SCUNetDenoise": SCUNetDenoise,
+    # Restormer nodes
+    "RestormerDenoise": RestormerDenoise,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
+    # NAFNet nodes
     "NAFNetLoader": "NAFNet Load Model",
     "NAFNetRestore": "NAFNet Restore",
     "NAFNetDenoise": "NAFNet Denoise (SIDD)",
     "NAFNetDeblur": "NAFNet Deblur (GoPro)",
     "NAFSSRStereoSR": "NAFSSR Stereo Super-Resolution",
+    # SCUNet nodes
+    "SCUNetDenoise": "SCUNet Denoise (Blind/Real)",
+    # Restormer nodes
+    "RestormerDenoise": "Restormer Denoise (Real)",
 }
