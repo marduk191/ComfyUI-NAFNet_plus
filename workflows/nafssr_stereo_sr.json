@@ -1,0 +1,158 @@
+{
+  "last_node_id": 6,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [50, 100],
+      "size": [315, 314],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [1],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": ["left_image.png", "image"],
+      "title": "Left Image"
+    },
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [50, 450],
+      "size": [315, 314],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [2],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": ["right_image.png", "image"],
+      "title": "Right Image"
+    },
+    {
+      "id": 3,
+      "type": "NAFSSRStereoSR",
+      "pos": [450, 250],
+      "size": [315, 106],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "left_image",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "name": "right_image",
+          "type": "IMAGE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "left_sr",
+          "type": "IMAGE",
+          "links": [3],
+          "slot_index": 0
+        },
+        {
+          "name": "right_sr",
+          "type": "IMAGE",
+          "links": [4],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "NAFSSRStereoSR"
+      },
+      "widgets_values": ["2x"]
+    },
+    {
+      "id": 4,
+      "type": "PreviewImage",
+      "pos": [850, 100],
+      "size": [210, 246],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "title": "Left SR Result"
+    },
+    {
+      "id": 5,
+      "type": "PreviewImage",
+      "pos": [850, 400],
+      "size": [210, 246],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 4
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "title": "Right SR Result"
+    }
+  ],
+  "links": [
+    [1, 1, 0, 3, 0, "IMAGE"],
+    [2, 2, 0, 3, 1, "IMAGE"],
+    [3, 3, 0, 4, 0, "IMAGE"],
+    [4, 3, 1, 5, 0, "IMAGE"]
+  ],
+  "groups": [
+    {
+      "title": "NAFSSR Stereo Image Super-Resolution",
+      "bounding": [40, 30, 1050, 750],
+      "color": "#3f789e",
+      "font_size": 24
+    }
+  ],
+  "config": {},
+  "extra": {
+    "info": "Load a stereo image pair (left and right views) and upscale them together using NAFSSR. The model uses cross-attention between the views for better quality."
+  },
+  "version": 0.4
+}

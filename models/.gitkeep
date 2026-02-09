@@ -1,0 +1,2 @@
+# This file ensures the models directory is created when cloning.
+# Download models using: python download_models.py
