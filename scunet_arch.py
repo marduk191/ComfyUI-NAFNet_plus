@@ -3,10 +3,12 @@ import math
 import torch
 import torch.nn as nn
 import numpy as np
-from thop import profile
 from einops import rearrange 
 from einops.layers.torch import Rearrange, Reduce
-from timm.models.layers import trunc_normal_, DropPath
+try:
+    from .layers import trunc_normal_, DropPath
+except ImportError:
+    from layers import trunc_normal_, DropPath
 
 
 class WMSA(nn.Module):

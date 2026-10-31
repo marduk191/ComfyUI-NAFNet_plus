@@ -19,15 +19,32 @@ Comprehensive ComfyUI custom nodes for state-of-the-art image restoration - **es
 
 ## Installation
 
+**ComfyUI Manager / Comfy Registry (recommended)** - search for `ComfyUI-NAFNet_plus` in the Manager, or:
+
+```bash
+comfy node install comfyui-nafnet-plus
+```
+
+**Manual**
+
 ```bash
 cd ComfyUI/custom_nodes
 git clone https://github.com/marduk191/ComfyUI-NAFNet_plus.git
 cd ComfyUI-NAFNet_plus
 pip install -r requirements.txt
-python download_models.py
 ```
 
-**Important:** Models are NOT included in the repo. Run `download_models.py` to download all pretrained weights (~2GB total).
+### Models
+
+Models are **not** included in the repo. Each node downloads the weights it needs automatically the first time it runs, into `ComfyUI/models/nafnet_plus/`.
+To pre-download everything (~2.4GB) or just specific models:
+
+```bash
+python download_models.py
+python download_models.py scunet_color_real_gan.pth RealESRGAN_x4plus.pth
+```
+
+Models already in this pack's own `models/` folder (older installs) are still found and used.
 
 ## Nodes
 
@@ -47,16 +64,18 @@ python download_models.py
 - **HINet Denoise (SIDD)** - Half Instance Normalization
 
 ### Domain-Specific
-- **NAFNet Denoise (SIDD)** - Smartphone camera noise
+- **NAFNet Denoise (SIDD)** - Smartphone camera noise (works best on mild, real sensor noise; heavy synthetic noise is out of its training domain)
 - **NAFNet Deblur (GoPro)** - GoPro motion blur only
 
 ## Model Downloads
 
-All models are downloaded via `download_models.py` from:
-- GitHub Releases (KAIR, SwinIR, Real-ESRGAN)
-- Google Drive (NAFNet, Restormer, HINet, MIRNet-v2)
+Weights are fetched from:
+- GitHub Releases (KAIR, SwinIR, Real-ESRGAN, Restormer, MIRNet-v2)
+- Google Drive (NAFNet, HINet)
 
-Total download size: ~2GB
+## Example Workflows
+
+Ready-made workflows are in `example_workflows/` and also show up in ComfyUI's **Templates** browser under *ComfyUI-NAFNet_plus*.
 
 ## Usage Tips
 
@@ -67,7 +86,7 @@ Total download size: ~2GB
 4. Chain with **Real-ESRGAN** or **SwinIR SR** for upscaling
 
 ### Tiling for Large Images
-All nodes support tiling for memory efficiency:
+All nodes support tiling for memory efficiency (tiled runs show progress and can be cancelled):
 - `tile_size=0` - Auto-tile images >1 megapixel
 - `tile_size=512` - Manual tile size (adjust based on VRAM)
 

@@ -1,0 +1,73 @@
+name: Load test on latest ComfyUI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ComfyUI-NAFNet_plus
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install latest ComfyUI (CPU)
+        run: |
+          git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -r ComfyUI/requirements.txt
+          pip install -r ComfyUI-NAFNet_plus/requirements.txt
+          ln -s "$GITHUB_WORKSPACE/ComfyUI-NAFNet_plus" ComfyUI/custom_nodes/ComfyUI-NAFNet_plus
+      - name: Start ComfyUI and check the nodes register
+        working-directory: ComfyUI
+        run: |
+          python main.py --cpu --port 8188 > comfy.log 2>&1 &
+          for i in $(seq 1 90); do curl -sf http://127.0.0.1:8188/object_info/NAFNetDenoise > /dev/null && break; sleep 2; done
+          cat comfy.log
+          if grep -q "IMPORT FAILED" comfy.log; then echo "Custom node failed to import"; exit 1; fi
+          python - <<'PY'
+          import json, urllib.request
+          info = json.load(urllib.request.urlopen("http://127.0.0.1:8188/object_info"))
+          expected = ["NAFNetDenoise", "NAFNetDeblur", "SCUNetDenoise", "RestormerDenoise", "SwinIRDenoise",
+                      "SwinIRSuperResolution", "RealESRGANUpscale", "BSRGANUpscale", "HINetDenoise",
+                      "MIRNetV2Denoise", "DnCNNDenoise", "FFDNetDenoise"]
+          missing = [n for n in expected if n not in info]
+          assert not missing, f"missing nodes: {missing}"
+          print(f"All {len(expected)} nodes registered")
+          PY
+      - name: Run a model end to end (DnCNN, auto-downloaded)
+        working-directory: ComfyUI
+        run: |
+          python - <<'PY'
+          import json, time, urllib.request
+          import numpy as np
+          from PIL import Image
+          rng = np.random.default_rng(0)
+          img = np.clip(rng.normal(128, 40, (97, 131, 3)), 0, 255).astype(np.uint8)
+          Image.fromarray(img).save("input/ci_test.png")
+          prompt = {
+              "1": {"class_type": "LoadImage", "inputs": {"image": "ci_test.png"}},
+              "2": {"class_type": "DnCNNDenoise", "inputs": {"image": ["1", 0], "model_variant": "color_blind"}},
+              "3": {"class_type": "SaveImage", "inputs": {"images": ["2", 0], "filename_prefix": "ci"}},
+          }
+          req = urllib.request.Request("http://127.0.0.1:8188/prompt", json.dumps({"prompt": prompt}).encode(),
+                                       {"Content-Type": "application/json"})
+          pid = json.load(urllib.request.urlopen(req))["prompt_id"]
+          for _ in range(300):
+              hist = json.load(urllib.request.urlopen(f"http://127.0.0.1:8188/history/{pid}"))
+              if pid in hist and hist[pid]["status"].get("completed") is not None:
+                  break
+              time.sleep(1)
+          status = hist[pid]["status"]
+          assert status["status_str"] == "success", status
+          out = hist[pid]["outputs"]["3"]["images"][0]
+          size = Image.open(f"output/{out['subfolder']}/{out['filename']}").size
+          assert size == (131, 97), size
+          print("End-to-end run OK", size)
+          PY

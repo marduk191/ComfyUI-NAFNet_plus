@@ -1,10 +1,18 @@
 """
 Download pretrained models for image restoration.
 
-This script downloads models from Google Drive and GitHub releases.
-Run this script after installation to download all required model weights.
+Run this script after installation to pre-download all model weights, or
+pass model filenames to fetch only those. The nodes also download any missing
+model automatically the first time it is used.
 
-Supported Models:
+    python download_models.py                      # everything
+    python download_models.py scunet_color_real_gan.pth RealESRGAN_x4plus.pth
+
+Models are saved to ``ComfyUI/models/nafnet_plus`` when this pack is installed
+inside ComfyUI's ``custom_nodes`` folder, otherwise to ``./models``. Files already
+present in this pack's own ``models`` folder (older installs) are still used.
+
+Sources:
 - NAFNet: https://github.com/megvii-research/NAFNet
 - SCUNet: https://github.com/cszn/SCUNet
 - Restormer: https://github.com/swz30/Restormer
@@ -16,103 +24,107 @@ Supported Models:
 - DnCNN/FFDNet: https://github.com/cszn/KAIR
 """
 import os
-import sys
 import subprocess
+import sys
 
-MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
+PACK_DIR = os.path.dirname(os.path.abspath(__file__))
+LEGACY_MODELS_DIR = os.path.join(PACK_DIR, "models")
+
+
+def default_models_dir():
+    """ComfyUI/models/nafnet_plus if installed in custom_nodes, else ./models."""
+    try:
+        import folder_paths  # available when running inside ComfyUI
+
+        return os.path.join(folder_paths.models_dir, "nafnet_plus")
+    except ImportError:
+        pass
+    comfy_root = os.path.dirname(os.path.dirname(PACK_DIR))
+    if os.path.basename(os.path.dirname(PACK_DIR)) == "custom_nodes" and os.path.isdir(
+        os.path.join(comfy_root, "models")
+    ):
+        return os.path.join(comfy_root, "models", "nafnet_plus")
+    return LEGACY_MODELS_DIR
+
 
 # Google Drive file IDs
 # Format: filename -> (file_id, expected_size_bytes)
 GDRIVE_MODELS = {
     # NAFNet models
-    "NAFNet-SIDD-width32.pth": ("1lsByk21Xw-6aW7epCwOQxvm6HYCQZPHZ", 116_800_000),
-    "NAFNet-SIDD-width64.pth": ("14Fht1QQJ2gMlk4N1ERCRuElg8JfjrWWR", 464_400_000),
-    "NAFNet-GoPro-width32.pth": ("1Fr2QadtDCEXg6iwWX8OzeZLbHOx2t5Bj", 68_700_000),
-    "NAFNet-GoPro-width64.pth": ("1S0PVRbyTakYY9a82kujgZLbMihfNBLfC", 271_800_000),
-    "NAFNet-REDS-width64.pth": ("14D4V4raNYIOhETfcuuLI3bGLB-OYIv6X", 271_800_000),
-    "NAFSSR-L_2x.pth": ("1SZ6bQVYTVS_AXedBEr-_mBCC-qGYHLmf", 96_500_000),
-    "NAFSSR-L_4x.pth": ("1TIdQhPtBrZb2wrBdAp9l8NHINLeExOwb", 97_500_000),
-    # Restormer
-    "restormer_real_denoising.pth": ("1FF_4NTboTWQ7sHCq4xhyLZsSl0U0JfjH", 110_000_000),
+    "NAFNet-SIDD-width32.pth": ("1lsByk21Xw-6aW7epCwOQxvm6HYCQZPHZ", 116_861_841),
+    "NAFNet-SIDD-width64.pth": ("14Fht1QQJ2gMlk4N1ERCRuElg8JfjrWWR", 464_154_961),
+    "NAFNet-GoPro-width32.pth": ("1Fr2QadtDCEXg6iwWX8OzeZLbHOx2t5Bj", 68_671_121),
+    "NAFNet-GoPro-width64.pth": ("1S0PVRbyTakYY9a82kujgZLbMihfNBLfC", 271_778_961),
     # HINet models
-    "HINet-SIDD-1x.pth": ("1CU5z-M90Jc-TAcVpEaFjDCYA09fkubGi", 88_000_000),
-    "HINet-SIDD-0.5x.pth": ("1Y5YJQVNL0weifE--5us344bLwzBNS_sU", 22_000_000),
-    "HINet-GoPro.pth": ("1dw8PKVkLfISzNtUu3gqGh83NBO83ZQ5n", 88_000_000),
-    # MIRNet-v2 (real denoising folder)
-    "MIRNet_v2_real_denoising.pth": ("1R2V80TFdTBLnwERFNBuq4eThKZGzv3bT", 22_000_000),
+    "HINet-SIDD-1x.pth": ("1CU5z-M90Jc-TAcVpEaFjDCYA09fkubGi", 354_715_486),
+    "HINet-SIDD-0.5x.pth": ("1Y5YJQVNL0weifE--5us344bLwzBNS_sU", 88_742_632),
 }
 
-# Direct URL downloads (GitHub releases, etc.)
+# Direct URL downloads (GitHub releases)
 # Format: filename -> (url, expected_size_bytes)
 URL_MODELS = {
     # SCUNet models (KAIR)
-    "scunet_color_real_gan.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/scunet_color_real_gan.pth", 75_500_000),
-    "scunet_color_real_psnr.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/scunet_color_real_psnr.pth", 75_500_000),
+    "scunet_color_real_gan.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/scunet_color_real_gan.pth", 71_982_835),
+    "scunet_color_real_psnr.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/scunet_color_real_psnr.pth", 71_982_841),
+
+    # Restormer - real image denoising (SIDD)
+    "restormer_real_denoising.pth": ("https://github.com/swz30/Restormer/releases/download/v1.0/real_denoising.pth", 104_611_957),
+
+    # MIRNet-v2 - real image denoising (SIDD)
+    "MIRNet_v2_real_denoising.pth": ("https://github.com/swz30/MIRNetv2/releases/download/v1.0.0/real_denoising.pth", 23_560_589),
 
     # SwinIR models - Color Denoising
-    "swinir_color_dn_noise15.pth": ("https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/005_colorDN_DFWB_s128w8_SwinIR-M_noise15.pth", 12_000_000),
-    "swinir_color_dn_noise25.pth": ("https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/005_colorDN_DFWB_s128w8_SwinIR-M_noise25.pth", 12_000_000),
-    "swinir_color_dn_noise50.pth": ("https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/005_colorDN_DFWB_s128w8_SwinIR-M_noise50.pth", 12_000_000),
+    "swinir_color_dn_noise15.pth": ("https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/005_colorDN_DFWB_s128w8_SwinIR-M_noise15.pth", 122_905_743),
+    "swinir_color_dn_noise25.pth": ("https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/005_colorDN_DFWB_s128w8_SwinIR-M_noise25.pth", 122_905_743),
+    "swinir_color_dn_noise50.pth": ("https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/005_colorDN_DFWB_s128w8_SwinIR-M_noise50.pth", 122_905_743),
 
-    # SwinIR models - Real-World SR (good for general enhancement)
-    "swinir_real_sr_x4_large.pth": ("https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/003_realSR_BSRGAN_DFOWMFC_s64w8_SwinIR-L_x4_GAN.pth", 137_000_000),
+    # SwinIR models - Real-World SR
+    "swinir_real_sr_x4_large.pth": ("https://github.com/JingyunLiang/SwinIR/releases/download/v0.0/003_realSR_BSRGAN_DFOWMFC_s64w8_SwinIR-L_x4_GAN.pth", 142_473_939),
 
     # Real-ESRGAN models
-    "RealESRGAN_x4plus.pth": ("https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth", 67_000_000),
-    "RealESRGAN_x2plus.pth": ("https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth", 67_000_000),
-    "realesr-general-x4v3.pth": ("https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-x4v3.pth", 67_000_000),
+    "RealESRGAN_x4plus.pth": ("https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth", 67_040_989),
+    "RealESRGAN_x2plus.pth": ("https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth", 67_061_725),
+    "realesr-general-x4v3.pth": ("https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-general-x4v3.pth", 4_885_111),
 
     # BSRGAN models (KAIR)
-    "BSRGAN.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/BSRGAN.pth", 67_000_000),
-    "BSRGANx2.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/BSRGANx2.pth", 67_000_000),
+    "BSRGAN.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/BSRGAN.pth", 67_046_751),
+    "BSRGANx2.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/BSRGANx2.pth", 66_894_171),
 
     # DnCNN models (KAIR) - Gaussian denoising
-    "dncnn_color_blind.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/dncnn_color_blind.pth", 2_500_000),
-    "dncnn_gray_blind.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/dncnn_gray_blind.pth", 700_000),
-    "dncnn_15.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/dncnn_15.pth", 700_000),
-    "dncnn_25.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/dncnn_25.pth", 700_000),
-    "dncnn_50.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/dncnn_50.pth", 700_000),
+    "dncnn_color_blind.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/dncnn_color_blind.pth", 2_678_121),
+    "dncnn_gray_blind.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/dncnn_gray_blind.pth", 2_668_897),
+    "dncnn_15.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/dncnn_15.pth", 2_224_903),
+    "dncnn_25.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/dncnn_25.pth", 2_224_903),
+    "dncnn_50.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/dncnn_50.pth", 2_224_903),
 
     # FFDNet models (KAIR) - Fast flexible denoising
-    "ffdnet_color.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/ffdnet_color.pth", 3_500_000),
-    "ffdnet_gray.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/ffdnet_gray.pth", 900_000),
-
-    # DRUNet models (KAIR) - Deep residual U-Net denoising
-    "drunet_color.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/drunet_color.pth", 130_000_000),
-    "drunet_gray.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/drunet_gray.pth", 33_000_000),
+    "ffdnet_color.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/ffdnet_color.pth", 3_411_551),
+    "ffdnet_gray.pth": ("https://github.com/cszn/KAIR/releases/download/v1.0/ffdnet_gray.pth", 1_945_077),
 }
+
+ALL_MODELS = {**{k: ("gdrive",) + v for k, v in GDRIVE_MODELS.items()},
+              **{k: ("url",) + v for k, v in URL_MODELS.items()}}
 
 
 def is_lfs_pointer(filepath):
     """Check if file is a Git LFS pointer (not actual content)."""
-    if not os.path.exists(filepath):
+    if not os.path.exists(filepath) or os.path.getsize(filepath) >= 200:
         return False
-    size = os.path.getsize(filepath)
-    # LFS pointers are small text files (~130 bytes)
-    if size < 200:
-        try:
-            with open(filepath, 'r') as f:
-                content = f.read(50)
-                return content.startswith('version https://git-lfs')
-        except:
-            pass
-    return False
+    try:
+        with open(filepath, "r") as f:
+            return f.read(50).startswith("version https://git-lfs")
+    except (OSError, UnicodeDecodeError):
+        return False
 
 
 def needs_download(filepath, expected_size):
-    """Check if model needs to be downloaded."""
-    if not os.path.exists(filepath):
+    """Check if model is missing, an LFS pointer, or truncated."""
+    if not os.path.exists(filepath) or is_lfs_pointer(filepath):
         return True
-    if is_lfs_pointer(filepath):
-        return True
-    # Check if file is roughly the expected size (within 20%)
-    actual_size = os.path.getsize(filepath)
-    if actual_size < expected_size * 0.8:
-        return True
-    return False
+    return os.path.getsize(filepath) < expected_size * 0.8
 
 
-def download_from_gdrive(file_id, dest_path):
+def download_from_gdrive(file_id, dest_path, display_name=None):
     """Download file from Google Drive using gdown."""
     try:
         import gdown
@@ -121,106 +133,98 @@ def download_from_gdrive(file_id, dest_path):
         subprocess.check_call([sys.executable, "-m", "pip", "install", "gdown", "-q"])
         import gdown
 
-    url = f"https://drive.google.com/uc?id={file_id}"
-    print(f"Downloading {os.path.basename(dest_path)} from Google Drive...")
-    gdown.download(url, dest_path, quiet=False)
+    print(f"Downloading {display_name or os.path.basename(dest_path)} from Google Drive...")
+    result = gdown.download(f"https://drive.google.com/uc?id={file_id}", dest_path, quiet=False)
+    if result is None or not os.path.exists(dest_path):
+        raise RuntimeError("Google Drive download failed (file may be rate-limited; try again later)")
 
 
-def download_from_url(url, dest_path):
-    """Download file from direct URL with progress."""
+def download_from_url(url, dest_path, display_name=None):
+    """Download file from a direct URL with a progress indicator."""
     import urllib.request
 
-    filename = os.path.basename(dest_path)
-    source = url.split('/')[2]
-    print(f"Downloading {filename} from {source}...")
+    print(f"Downloading {display_name or os.path.basename(dest_path)} from {url.split('/')[2]}...")
 
-    try:
-        # Simple progress indicator
-        def report_progress(block_num, block_size, total_size):
+    def report_progress(block_num, block_size, total_size):
+        if total_size > 0:
             downloaded = block_num * block_size
-            if total_size > 0:
-                percent = min(100, downloaded * 100 // total_size)
-                mb_downloaded = downloaded / (1024 * 1024)
-                mb_total = total_size / (1024 * 1024)
-                print(f"\r  {percent}% ({mb_downloaded:.1f}/{mb_total:.1f} MB)", end="", flush=True)
+            percent = min(100, downloaded * 100 // total_size)
+            print(f"\r  {percent}% ({downloaded / 2**20:.1f}/{total_size / 2**20:.1f} MB)", end="", flush=True)
 
-        urllib.request.urlretrieve(url, dest_path, reporthook=report_progress)
-        print()  # New line after progress
-    except Exception as e:
-        print(f"\n[ERROR] Failed to download: {e}")
-        raise
+    urllib.request.urlretrieve(url, dest_path, reporthook=report_progress)
+    print()
 
 
-def main():
-    os.makedirs(MODELS_DIR, exist_ok=True)
+def download_model(name, models_dir=None):
+    """Download a single model by filename. Returns the final path."""
+    if name not in ALL_MODELS:
+        raise KeyError(f"Unknown model: {name}")
+    source, ref, expected_size = ALL_MODELS[name]
+    models_dir = models_dir or default_models_dir()
+    os.makedirs(models_dir, exist_ok=True)
+    dest = os.path.join(models_dir, name)
+    tmp = dest + ".part"
+    if os.path.exists(tmp):
+        os.remove(tmp)
+    try:
+        if source == "gdrive":
+            download_from_gdrive(ref, tmp, name)
+        else:
+            download_from_url(ref, tmp, name)
+        if needs_download(tmp, expected_size):
+            raise RuntimeError(f"Downloaded file is incomplete ({os.path.getsize(tmp)} bytes)")
+        os.replace(tmp, dest)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    return dest
+
+
+def find_existing(name, search_dirs):
+    """Return the path of an already-downloaded, complete model, or None."""
+    expected_size = ALL_MODELS[name][2] if name in ALL_MODELS else 0
+    for d in search_dirs:
+        path = os.path.join(d, name)
+        if not needs_download(path, expected_size):
+            return path
+    return None
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    models_dir = default_models_dir()
+    search_dirs = list(dict.fromkeys([models_dir, LEGACY_MODELS_DIR]))
+    names = argv or list(ALL_MODELS)
 
     print("=" * 60)
-    print("  Image Restoration Model Downloader")
-    print("  NAFNet+ / SCUNet / Restormer / SwinIR / Real-ESRGAN")
-    print("  BSRGAN / HINet / MIRNet-v2 / DnCNN / FFDNet")
+    print("  Image Restoration Model Downloader (ComfyUI-NAFNet_plus)")
     print("=" * 60)
-    print(f"\nModels directory: {MODELS_DIR}\n")
+    print(f"\nModels directory: {models_dir}\n")
 
-    downloads_needed = 0
-    total_models = len(GDRIVE_MODELS) + len(URL_MODELS)
-
-    # Check Google Drive models
-    for name, (file_id, expected_size) in GDRIVE_MODELS.items():
-        dest = os.path.join(MODELS_DIR, name)
-        if needs_download(dest, expected_size):
-            downloads_needed += 1
-
-    # Check URL models
-    for name, (url, expected_size) in URL_MODELS.items():
-        dest = os.path.join(MODELS_DIR, name)
-        if needs_download(dest, expected_size):
-            downloads_needed += 1
-
-    if downloads_needed == 0:
-        print("All models are already downloaded!")
-    else:
-        print(f"Need to download {downloads_needed} of {total_models} model(s)...\n")
-
-        # Download Google Drive models
-        for name, (file_id, expected_size) in GDRIVE_MODELS.items():
-            dest = os.path.join(MODELS_DIR, name)
-            if needs_download(dest, expected_size):
-                if is_lfs_pointer(dest):
-                    print(f"[LFS POINTER] {name} - downloading actual file...")
-                    os.remove(dest)
-                try:
-                    download_from_gdrive(file_id, dest)
-                    print(f"  [OK] {name}")
-                except Exception as e:
-                    print(f"  [ERROR] Failed to download {name}: {e}")
-
-        # Download URL models
-        for name, (url, expected_size) in URL_MODELS.items():
-            dest = os.path.join(MODELS_DIR, name)
-            if needs_download(dest, expected_size):
-                if is_lfs_pointer(dest):
-                    print(f"[LFS POINTER] {name} - downloading actual file...")
-                    os.remove(dest)
-                try:
-                    download_from_url(url, dest)
-                    print(f"  [OK] {name}")
-                except Exception as e:
-                    print(f"  [ERROR] Failed to download {name}: {e}")
+    failed = []
+    for name in names:
+        if name not in ALL_MODELS:
+            print(f"  [SKIP] Unknown model: {name}")
+            failed.append(name)
+            continue
+        existing = find_existing(name, search_dirs)
+        if existing:
+            print(f"  [✓] {name} (already present: {existing})")
+            continue
+        try:
+            download_model(name, models_dir)
+            print(f"  [OK] {name}")
+        except Exception as e:  # keep going so one failure doesn't block the rest
+            print(f"  [ERROR] Failed to download {name}: {e}")
+            failed.append(name)
 
     print("\n" + "=" * 60)
-    print("Available models:")
-    print("=" * 60)
-
-    if os.path.exists(MODELS_DIR):
-        for f in sorted(os.listdir(MODELS_DIR)):
-            if f.endswith('.pth'):
-                filepath = os.path.join(MODELS_DIR, f)
-                if is_lfs_pointer(filepath):
-                    print(f"  [ ] {f} (LFS pointer - needs download)")
-                else:
-                    size_mb = os.path.getsize(filepath) / (1024 * 1024)
-                    print(f"  [✓] {f} ({size_mb:.1f} MB)")
+    if failed:
+        print(f"{len(failed)} model(s) failed: {', '.join(failed)}")
+        return 1
+    print("All requested models are available.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

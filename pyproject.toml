@@ -1,50 +1,40 @@
 [project]
-name = "comfyui-nafnet"
-version = "1.0.0"
-description = "ComfyUI custom nodes for NAFNet image restoration (denoising, deblurring, stereo SR)"
+name = "comfyui-nafnet-plus"
+version = "1.1.0"
+description = "Image restoration nodes for ComfyUI: NAFNet, SCUNet, Restormer, SwinIR, Real-ESRGAN, BSRGAN, HINet, MIRNet-v2, DnCNN and FFDNet denoising, deblurring and upscaling. Great for astrophotography. Models download automatically on first use."
 readme = "README.md"
-license = {text = "MIT"}
-authors = [
-    {name = "ComfyUI-NAFNet Contributors"}
-]
-keywords = ["comfyui", "nafnet", "image-restoration", "denoising", "deblurring", "super-resolution"]
+license = { file = "LICENSE" }
+authors = [{ name = "marduk191" }]
+keywords = ["comfyui", "nafnet", "scunet", "restormer", "swinir", "real-esrgan", "image-restoration", "denoising", "deblurring", "super-resolution", "astrophotography"]
 classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Image Processing",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 requires-python = ">=3.10"
+# torch, torchvision and numpy are provided by ComfyUI itself
 dependencies = [
-    "torch>=1.9.0",
-    "torchvision>=0.10.0",
-    "numpy",
+    "einops",
     "gdown",
 ]
 
 [project.urls]
-Homepage = "https://github.com/marduk191/ComfyUI-NAFNet"
-Repository = "https://github.com/marduk191/ComfyUI-NAFNet"
-Issues = "https://github.com/marduk191/ComfyUI-NAFNet/issues"
+Repository = "https://github.com/marduk191/ComfyUI-NAFNet_plus"
+"Bug Tracker" = "https://github.com/marduk191/ComfyUI-NAFNet_plus/issues"
 
-[project.optional-dependencies]
-dev = [
-    "pytest",
-    "black",
-    "ruff",
-]
+[tool.comfy]
+PublisherId = "marduk191"
+DisplayName = "ComfyUI-NAFNet_plus"
+Icon = ""
+includes = []
 
 [tool.black]
 line-length = 120
-target-version = ["py310", "py311", "py312"]
 
 [tool.ruff]
 line-length = 120
+
+[tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 ignore = ["E501"]
